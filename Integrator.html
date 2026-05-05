@@ -1,0 +1,205 @@
+<!DocType HTML>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<title>Simpson's Rule Integral solver</title>
+		<style>
+			* {
+				font-family: monospace;
+				margin: 10px;
+				padding: 0;
+				position: absolute;
+			}
+			#heading {
+				white-space: nowrap;
+				top: 10px;
+				left: 10px;
+			}
+			#intsign {
+				font: 60px "Times New Roman";
+				top: 110px;
+				left: 100px;
+			}
+			#lLim {
+				top: 160px;
+				left: 125px;
+			}
+			#uLim {
+				top: 100px;
+				left: 135px;
+			}
+			#lLim, #uLim {
+				width: 50px;
+			}
+			#igrd {
+				top: 130px;
+				left: 150px
+			}
+			#dx {
+				top: 128px;
+				left: 320px;
+			}
+			button {
+				width: 80px;
+				height: 20px;
+				top: 200px;
+				left: 10px;
+			}
+			#rtext {
+				top: 230px;
+				left: 10px;
+				white-space: nowrap;
+			}
+			#res {
+				top: -10px;
+				left: 7ch;
+			}
+			#afc {
+				line-height: 10px;
+				position: absolute;
+				top: 10px;
+				left: 550px;
+				white-space: nowrap;
+			}
+			#afc li {
+				position: relative;
+			}
+		</style>
+		<script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1"></script>
+		<script>
+			$(() => {
+				function safeEvaluate(expr, vars = {}) {
+					if (!/^[0-9+\-*/^()., a-zA-Z]+$/.test(expr)) {
+						throw new Error("Unsafe characters detected!");
+					};
+					for (let key in vars) {
+						let re = new RegExp(`\\b${key}\\b`, "g");
+						expr = expr.replace(re, vars[key]);
+					};
+					expr = expr.replace(/\^/g, "**");
+					const EPS = 1e-12;
+					const safeMath = {
+						sin: Math.sin,
+						cos: Math.cos,
+						tan: Math.tan,
+						cot: (x) => Math.abs(Math.sin(x)) < EPS ? Infinity : Math.cos(x) / Math.sin(x),
+						sec: (x) => Math.abs(Math.cos(x)) < EPS ? Infinity : 1 / Math.cos(x),
+						csc: (x) => Math.abs(Math.sin(x)) < EPS ? Infinity : 1 / Math.sin(x),
+						sqrt: Math.sqrt,
+						abs: Math.abs,
+						log: Math.log10,
+						ln: Math.log,
+						exp: Math.exp,
+						PI: Math.PI,
+						E: Math.E
+					};
+					const func = new Function(
+						...Object.keys(safeMath),
+						'"use strict"; return (' + expr + ')'
+					);
+					return func(...Object.values(safeMath));
+				};
+				function fFactory(expr) {
+					return function(x) {
+						return safeEvaluate(expr, { x: x });
+					};
+				};
+				function safeF(f, x) {
+					const val = f(x);
+					if (!isFinite(val)) {
+						throw new Error("Singularity at x = " + x);
+					};
+					return val;
+				};
+				function simpson(f, a, b) {
+					const c = (a + b) / 2;
+					return (b - a) / 6 * (
+						safeF(f, a) +
+						4 * safeF(f, c) +
+						safeF(f, b)
+					);
+				};
+				function adaptiveSimpson(f, a, b, eps, whole, depth) {
+					const c = (a + b) / 2;
+					const left = simpson(f, a, c);
+					const right = simpson(f, c, b);
+					if (depth <= 0 || Math.abs(left + right - whole) < 15 * eps) {
+						return left + right + (left + right - whole) / 15;
+					};
+					return adaptiveSimpson(f, a, c, eps / 2, left, depth - 1) +
+						   adaptiveSimpson(f, c, b, eps / 2, right, depth - 1);
+				};
+				function integrateSafe(f, a, b, eps, depth) {
+					try {
+						const initial = simpson(f, a, b);
+						return adaptiveSimpson(f, a, b, eps, initial, depth);
+					} catch (e) {
+						const mid = (a + b) / 2;
+						if (Math.abs(b - a) < 1e-10 || depth <= 0) {
+							return NaN;
+						};
+						return integrateSafe(f, a, mid, eps, depth - 1) +
+							   integrateSafe(f, mid, b, eps, depth - 1);
+					};
+				};
+				$("#intgCalc").on("submit", (e) => {
+					e.preventDefault();
+					const lLimRaw = $("#lLim").val().trim();
+					const uLimRaw = $("#uLim").val().trim();
+					const expr = $("#igrd").val().trim();
+					if (!lLimRaw || !uLimRaw || !expr) {
+						$("#res").text("Error: All fields are required.");
+						return;
+					};
+					let a, b;
+					try {
+						a = safeEvaluate(lLimRaw);
+						b = safeEvaluate(uLimRaw);
+					} catch {
+						$("#res").text("Limits contain non-numeric characters.");
+						return;
+					}
+					const f = fFactory(expr);
+					const eps = 1e-6;
+					const maxDepth = 20;
+					const result = integrateSafe(f, a, b, eps, maxDepth);
+					$("#res").text(Math.round(result * 100000) / 100000);
+				});
+			});
+		</script>
+	</head>
+	<body>
+		<form id="intgCalc">
+			<h2 id="heading">NUMERICAL INTEGRATOR - Simpson's rule</h2>
+			<h1 id="intsign">&int;</h1>
+			<input id="lLim" type="text">
+			<input id="uLim" type="text">
+			<input id="igrd" type="text"><h2 id="dx">dx</h2>
+			<button type="submit">Evaluate</button>
+			<br>
+			<h2 id="rtext">Result: <span id="res"></span></h2>
+			<ul id="afc">
+				Allowed functions and constants:
+				<li>+</li>
+				<li>-</li>
+				<li>*</li>
+				<li>/</li>
+				<li>^</li>
+				<li>sin()</li>
+				<li>cos()</li>
+				<li>tan()</li>
+				<li>cot()</li>
+				<li>sec()</li>
+				<li>csc()</li>
+				<li>sqrt()</li>
+				<li>abs()</li>
+				<li>log()</li>
+				<li>ln()</li>
+				<li>exp()</li>
+				<li>PI</li>
+				<li>E</li>
+			</ul>
+		</form>
+	</body>
+</html>
